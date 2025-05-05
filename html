@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Loneliness Intervention App</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/css/bootstrap.min.css">
+  <style>
+    body {
+      font-size: 1.5rem;
+      background-color: #f8f9fa;
+    }
+    .container {
+      max-width: 800px;
+      margin-top: 20px;
+    }
+    .btn {
+      font-size: 1.5rem;
+      padding: 1rem;
+      margin: 10px;
+    }
+    .section {
+      padding: 20px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .form-control {
+      font-size: 1.5rem;
+    }
+    .question {
+      margin-bottom: 20px;
+    }
+    .option {
+      width: 100%;
+      text-align: left;
+    }
+    #images img {
+      width: 45%;
+      margin: 10px;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+    }
+    .speak-btn {
+      font-size: 1rem;
+      padding: 0.5rem;
+      margin-left: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Welcome Page -->
+    <div id="welcome" class="section">
+      <h1>Welcome to the Loneliness Intervention App</h1>
+      <p>This app helps reduce loneliness by suggesting personalized social activities based on your inputs.</p>
+      <button id="startBtn" class="btn btn-primary">Start</button>
+    </div>
+
+    <!-- Calibration Page for Eye-Tracking -->
+    <div id="calibration" class="section" style="display:none;">
+      <h2>Eye-Tracking Calibration</h2>
+      <p>Please click on the points that appear on the screen to calibrate the eye-tracking system.</p>
+      <div id="calibrationPoints" style="position: relative; height: 300px; background: #eee;">
+        <!-- Calibration points will be added dynamically -->
+      </div>
+      <button id="calibrateBtn" class="btn btn-primary" disabled>Complete Calibration</button>
+    </div>
+
+    <!-- Assessment Page -->
+    <div id="assessment" class="section" style="display:none;">
+      <h2>Daily Assessment</h2>
+      <form id="assessmentForm">
+        <div class="form-group">
+          <label for="mood">How are you feeling today? <button type="button" class="speak-btn btn btn-secondary" onclick="speak('How are you feeling today?')">Speak</button></label>
+          <select id="mood" class="form-control" required>
+            <option value="">Select</option>
+            <option value="happy">Happy</option>
+            <option value="neutral">Neutral</option>
+            <option value="sad">Sad</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="interactions">How many social interactions did you have today? <button type="button" class="speak-btn btn btn-secondary" onclick="speak('How many social interactions did you have today?')">Speak</button></label>
+          <input type="number" id="interactions" class="form-control" min="0" required>
+        </div>
+        <div class="form-group">
+          <label for="journal">Tell us about your day (optional) <button type="button" class="speak-btn btn btn-secondary" onclick="speak('Tell us about your day')">Speak</button></label>
+          <textarea id="journal" class="form-control" rows="3"></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">Next</button>
+      </form>
+    </div>
+
+    <!-- DCE Page -->
+    <div id="dce" class="section" style="display:none;">
+      <h2>Your Preferences</h2>
+      <p>Please choose your preferred option for each question to help us tailor suggestions.</p>
+      <div id="questions">
+        <!-- Questions will be added dynamically -->
+      </div>
+      <button id="dceNext" class="btn btn-primary" style="display:none;">Next</button>
+    </div>
+
+    <!-- Engagement Page -->
+    <div id="engagement" class="section" style="display:none;">
+      <h2>Engagement Task</h2>
+      <p>Please look at the images below naturally for 30 seconds.</p>
+      <div id="images" class="d-flex flex-wrap justify-content-center">
+        <img src="https://via.placeholder.com/200x150?text=Group+In-Person" alt="Group In-Person" data-type="group-inperson">
+        <img src="https://via.placeholder.com/200x150?text=Group+Virtual" alt="Group Virtual" data-type="group-virtual">
+        <img src="https://via.placeholder.com/200x150?text=Individual+In-Person" alt="Individual In-Person" data-type="individual-inperson">
+        <img src="https://via.placeholder.com/200x150?text=Individual+Virtual" alt="Individual Virtual" data-type="individual-virtual">
+      </div>
+      <button id="engagementDone" class="btn btn-primary" style="display:none;">Done</button>
+    </div>
+
+    <!-- Results Page -->
+    <div id="results" class="section" style="display:none;">
+      <h2>Your Results</h2>
+      <p><strong>Loneliness Risk:</strong> <span id="riskLevel"></span></p>
+      <h3>Suggestions</h3>
+      <ul id="suggestionsList" class="list-group"></ul>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sentiment@5.0.0/sentiment.min.js"></script>
+  <script src="https://webgazer.cs.brown.edu/webgazer.js"></script>
+  <script>
+    // User data object
+    let userData = {
+      mood: null,
+      interactions: null,
+      journal: null,
+      sentiment: null,
+      dceChoices: [],
+      gazeData: [],
+      riskScore: null,
+      suggestions: []
+    };
+
+    // DCE Questions
+    const dceQuestions = [
+      {
+        id: 1,
+        text: "Would you prefer a weekly in-person group activity or a monthly virtual individual activity?",
+        options: [
+          { text: "Weekly in-person group activity", value: "group-inperson" },
+          { text: "Monthly virtual individual activity", value: "individual-virtual" }
+        ]
+      },
+      {
+        id: 2,
+        text: "Would you prefer a weekly virtual group activity or a monthly in-person individual activity?",
+        options: [
+          { text: "Weekly virtual group activity", value: "group-virtual" },
+          { text: "Monthly in-person individual activity", value: "individual-inperson" }
+        ]
+      },
+      {
+        id: 3,
+        text: "Would you prefer a monthly in-person group activity or a weekly virtual individual activity?",
+        options: [
+          { text: "Monthly in-person group activity", value: "group-inperson" },
+          { text: "Weekly virtual individual activity", value: "individual-virtual" }
+        ]
+      }
+    ];
+
+    let currentQuestion = 0;
+
+    // Image regions for eye-tracking
+    let imageRegions = [];
+
+    // Initialize WebGazer
+    webgazer.setGazeListener(function(data, elapsedTime) {
+      if (data == null || currentQuestion !== -1) return;
+      const x = data.x;
+      const y = data.y;
+      imageRegions.forEach(region => {
+        if (x >= region.left && x <= region.right && y >= region.top && y <= region.bottom) {
+          region.count++;
+        }
+      });
+    }).begin();
+    webgazer.showPredictionPoints(false);
+
+    // Text-to-Speech
+    function speak(text) {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'en-AU';
+      speechSynthesis.speak(utterance);
+    }
+
+    // Calculate Loneliness Risk
+    function calculateRisk() {
+      let moodScore = { happy: 0, neutral: 1, sad: 2 }[userData.mood];
+      let interactionScore = userData.interactions >= 5 ? 0 : userData.interactions >= 2 ? 1 : 2;
+      let sentimentScore = userData.sentiment > 0 ? 0 : userData.sentiment < 0 ? 2 : 1;
+      let totalScore = moodScore + interactionScore + sentimentScore;
+      if (totalScore <= 2) return 'Low';
+      if (totalScore <= 4) return 'Medium';
+      return 'High';
+    }
+
+    // Generate Suggestions
+    function generateSuggestions() {
+      const risk = userData.riskScore;
+      const prefersGroup = userData.dceChoices.filter(c => c.includes('group')).length > userData.dceChoices.filter(c => c.includes('individual')).length;
+      const prefersInPerson = userData.dceChoices.filter(c => c.includes('inperson')).length > userData.dceChoices.filter(c => c.includes('virtual')).length;
+      const mostLookedAt = imageRegions.reduce((max, region) => region.count > max.count ? region : max, imageRegions[0]).type;
+
+      if (risk === 'High') {
+        if (prefersGroup && prefersInPerson && mostLookedAt.includes('group-inperson')) {
+          userData.suggestions.push('Join a local seniors club for weekly in-person activities.');
+        } else if (prefersGroup) {
+          userData.suggestions.push('Participate in virtual group sessions or online community events.');
+        } else if (prefersInPerson) {
+          userData.suggestions.push('Arrange regular in-person visits with friends or volunteers.');
+        } else {
+          userData.suggestions.push('Schedule video calls with family or friends.');
+        }
+      } else if (risk === 'Medium') {
+        if (prefersGroup) {
+          userData.suggestions.push('Try attending a group activity, either in-person or virtually.');
+        } else {
+          userData.suggestions.push('Connect with a friend or volunteer for a chat.');
+        }
+      } else {
+        userData.suggestions.push('Keep up your current social activities.');
+      }
+    }
+
+    // Show DCE Question
+    function showQuestion() {
+      const question = dceQuestions[currentQuestion];
+      const questionsDiv = document.getElementById('questions');
+      questionsDiv.innerHTML = `
+        <div class="question">
+          <p>${question.text} <button type="button" class="speak-btn btn btn-secondary" onclick="speak('${question.text}')">Speak</button></p>
+          ${question.options.map(opt => `
+            <button class="option btn btn-outline-primary" data-choice="${opt.value}">${opt.text}</button>
+          `).join('')}
+        </div>
+      `;
+      document.querySelectorAll('.option').forEach(button => {
+        button.addEventListener('click', () => {
+          userData.dceChoices.push(button.dataset.choice);
+          currentQuestion++;
+          if (currentQuestion < dceQuestions.length) {
+            showQuestion();
+          } else {
+            document.getElementById('dce').style.display = 'none';
+            document.getElementById('engagement').style.display = 'block';
+            // Initialize image regions
+            imageRegions = [];
+            document.querySelectorAll('#images img').forEach(img => {
+              const rect = img.getBoundingClientRect();
+              imageRegions.push({
+                type: img.dataset.type,
+                left: rect.left,
+                top: rect.top,
+                right: rect.right,
+                bottom: rect.bottom,
+                count: 0
+              });
+            });
+            // Start engagement timer
+            setTimeout(() => {
+              document.getElementById('engagementDone').style.display = 'block';
+            }, 30000);
+          }
+        });
+      });
+    }
+
+    // Event Listeners
+    document.getElementById('startBtn').addEventListener('click', () => {
+      document.getElementById('welcome').style.display = 'none';
+      document.getElementById('calibration').style.display = 'block';
+      // Calibration setup
+      const pointsDiv = document.getElementById('calibrationPoints');
+      const points = [
+        { x: 50, y: 50 }, { x: 250, y: 50 }, { x: 50, y: 250 }, { x: 250, y: 250 }
+      ];
+      points.forEach((point, index) => {
+        const pointEl = document.createElement('div');
+        pointEl.style.position = 'absolute';
+        pointEl.style.left = `${point.x}px`;
+        pointEl.style.top = `${point.y}px`;
+        pointEl.style.width = '20px';
+        pointEl.style.height = '20px';
+        pointEl.style.background = 'red';
+        pointEl.style.borderRadius = '50%';
+        pointEl.style.cursor = 'pointer';
+        pointEl.addEventListener('click', () => {
+          webgazer.recordScreenPosition(point.x, point.y);
+          pointEl.style.display = 'none';
+          if (index === points.length - 1) {
+            document.getElementById('calibrateBtn').disabled = false;
+          }
+        });
+        pointsDiv.appendChild(pointEl);
+      });
+    });
+
+    document.getElementById('calibrateBtn').addEventListener('click', () => {
+      webgazer.showPredictionPoints(false);
+      document.getElementById('calibration').style.display = 'none';
+      document.getElementById('assessment').style.display = 'block';
+    });
+
+    document.getElementById('assessmentForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      userData.mood = document.getElementById('mood').value;
+      userData.interactions = parseInt(document.getElementById('interactions').value);
+      userData.journal = document.getElementById('journal').value;
+      if (userData.journal) {
+        const sentiment = new Sentiment();
+        const result = sentiment.analyze(userData.journal);
+        userData.sentiment = result.score;
+      } else {
+        userData.sentiment = 0;
+      }
+      document.getElementById('assessment').style.display = 'none';
+      document.getElementById('dce').style.display = 'block';
+      showQuestion();
+    });
+
+    document.getElementById('engagementDone').addEventListener('click', () => {
+      webgazer.pause();
+      document.getElementById('engagement').style.display = 'none';
+      document.getElementById('results').style.display = 'block';
+      userData.riskScore = calculateRisk();
+      generateSuggestions();
+      document.getElementById('riskLevel').textContent = userData.riskScore;
+      const suggestionsList = document.getElementById('suggestionsList');
+      userData.suggestions.forEach(suggestion => {
+        const li = document.createElement('li');
+        li.className = 'list-group-item';
+        li.textContent = suggestion;
+        suggestionsList.appendChild(li);
+      });
+    });
+  </script>
+</body>
+</html>
